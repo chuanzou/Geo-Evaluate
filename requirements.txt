@@ -1,0 +1,9 @@
+numpy>=1.24
+pillow>=10.0
+pyyaml>=6.0
+matplotlib>=3.7
+scipy>=1.10
+tqdm>=4.66
+torch>=2.1
+torchvision>=0.16
+pytest>=7.4
