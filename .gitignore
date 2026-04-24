@@ -9,7 +9,6 @@ env/
 
 data/raw/
 data/processed/
-outputs/
 
 *.npy
 *.npz
