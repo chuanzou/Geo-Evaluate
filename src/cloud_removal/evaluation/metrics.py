@@ -30,6 +30,24 @@ def ssim(prediction: np.ndarray, target: np.ndarray) -> float:
     return float(np.mean(channel_scores))
 
 
+def l1(prediction: np.ndarray, target: np.ndarray) -> float:
+    """Mean absolute error across all pixels and channels."""
+    return float(np.mean(np.abs(prediction - target)))
+
+
+def masked_l1(prediction: np.ndarray, target: np.ndarray, mask: np.ndarray) -> float:
+    """Mean absolute error restricted to the cloud (mask == 1) region.
+
+    Returns ``0.0`` when the mask is empty to avoid division-by-zero; callers
+    that want to distinguish "no clouds" from "perfect reconstruction" should
+    inspect ``coverage`` in parallel.
+    """
+    mask2d = mask.squeeze()
+    denom = max(float(mask2d.sum()) * prediction.shape[0], 1.0)
+    error = np.abs(prediction - target) * mask2d[None, ...]
+    return float(error.sum() / denom)
+
+
 def ndvi(image: np.ndarray, red_index: int = 0, nir_index: int = 3) -> np.ndarray:
     red = image[red_index]
     nir = image[nir_index]
@@ -45,9 +63,15 @@ def ndvi_mae(prediction: np.ndarray, target: np.ndarray, mask: np.ndarray | None
     return float(error.mean())
 
 
-def evaluate_prediction(prediction: np.ndarray, target: np.ndarray, mask: np.ndarray | None = None) -> dict[str, float]:
-    return {
+def evaluate_prediction(
+    prediction: np.ndarray, target: np.ndarray, mask: np.ndarray | None = None
+) -> dict[str, float]:
+    metrics = {
         "psnr": psnr(prediction, target),
         "ssim": ssim(prediction, target),
+        "l1": l1(prediction, target),
         "ndvi_mae": ndvi_mae(prediction, target, mask),
     }
+    if mask is not None:
+        metrics["l1_cloud_region"] = masked_l1(prediction, target, mask)
+    return metrics

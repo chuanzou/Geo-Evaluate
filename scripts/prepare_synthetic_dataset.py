@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -9,6 +10,14 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from cloud_removal.data.synthetic_clouds import apply_cloud, random_sentinel_like_patch
+
+
+# Files that were produced by a previous run have names of the form
+# ``<base>_c<NN>.npy``.  In ``--from-ground-truth`` mode we re-read the
+# ground-truth directory, and *without* filtering these out we would treat our
+# own generated samples as new bases on the next run, exponentially inflating
+# the dataset and silently mixing cloudy-derived content into "ground truth".
+_DERIVED_SUFFIX = re.compile(r"_c\d{2}$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,6 +33,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_base_image(path: Path) -> np.ndarray:
+    """Load a ground-truth patch and coerce it into a finite ``float32``
+    CxHxW tensor with values in ``[0, 1]``.
+
+    Un-normalised inputs (e.g. Sentinel-2 reflectance in thousands) or stray
+    NaNs in external GeoTIFFs were the main source of downstream training
+    instability, so we normalise/clip here rather than propagating the
+    garbage through apply_cloud and into the GAN.
+    """
+    arr = np.load(path).astype(np.float32)
+    if arr.ndim != 3:
+        raise ValueError(f"Expected CxHxW, got shape {arr.shape} for {path}")
+    # Replace NaN/Inf with sensible finite values before scaling.
+    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+    max_value = float(arr.max())
+    if max_value > 1.5:
+        # Assume the image uses raw reflectance units; scale into [0, 1].
+        arr = arr / max_value
+    return np.clip(arr, 0.0, 1.0)
+
+
 def main() -> None:
     args = parse_args()
     root = Path(args.root)
@@ -36,10 +66,15 @@ def main() -> None:
 
     rng = np.random.default_rng(args.seed)
     if args.from_ground_truth:
-        gt_paths = sorted(gt_dir.glob("*.npy"))
+        gt_paths = sorted(
+            path for path in gt_dir.glob("*.npy") if not _DERIVED_SUFFIX.search(path.stem)
+        )
         if not gt_paths:
-            raise FileNotFoundError(f"No .npy ground-truth patches found in {gt_dir}")
-        base_images = [(path.stem, np.load(path).astype(np.float32)) for path in gt_paths]
+            raise FileNotFoundError(
+                f"No .npy ground-truth patches found in {gt_dir} "
+                "(files ending with _cNN are treated as derived and ignored)."
+            )
+        base_images = [(path.stem, _load_base_image(path)) for path in gt_paths]
     else:
         base_images = [
             (f"patch_{index:05d}", random_sentinel_like_patch(args.image_size, rng))
@@ -59,6 +94,11 @@ def main() -> None:
     test_ids: list[str] = []
 
     for base_id, image in base_images:
+        # Defensive final check — if a base image slipped through with a
+        # non-finite pixel, skip it rather than poison training.
+        if not np.isfinite(image).all():
+            print(f"Skipping {base_id}: contains NaN/Inf after normalisation.")
+            continue
         for coverage in args.coverages:
             sample_id = f"{base_id}_c{int(round(coverage * 100)):02d}"
             cloud = apply_cloud(image, coverage, rng)

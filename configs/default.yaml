@@ -1,5 +1,5 @@
 seed: 42
-device: auto
+device: mps
 
 data:
   root: data/processed/synthetic_cloud_benchmark
@@ -11,9 +11,10 @@ data:
   temporal_neighbors: 3
 
 training:
-  batch_size: 8
-  epochs: 5
-  learning_rate: 0.0002
+  batch_size: 4
+  epochs: 8                 # GAN 专用；diffusion 用下面的 diffusion_epochs
+  diffusion_epochs: 50      # diffusion 要更多 epoch（每步只学一个随机 timestep 的去噪）
+  learning_rate: 0.00005
   num_workers: 0
   lambda_l1: 100.0
   diffusion_timesteps: 100

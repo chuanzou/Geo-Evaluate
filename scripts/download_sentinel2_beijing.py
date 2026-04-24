@@ -43,7 +43,7 @@ def import_ee():
 
 def initialize_ee(ee) -> None:
     try:
-        ee.Initialize()
+        ee.Initialize(project='my-project-0418-493801')
     except Exception:
         print("Earth Engine is not initialized. Starting authentication flow...")
         ee.Authenticate()

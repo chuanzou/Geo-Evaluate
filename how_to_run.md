@@ -109,6 +109,8 @@ Default scale: 10 meters
 
 First run a small test export:
 
+这里是可以修改patches个数的，目前设定3000
+
 ```bash
 python scripts/download_sentinel2_beijing.py \
   --year 2023 \
@@ -157,6 +159,7 @@ data/raw/sentinel2_beijing/
   s2_beijing_patch_2023_00001.tif
   ...
 ```
+这一步搞定啦，4.19 8:14pm
 
 ## 7. Convert GeoTIFF Files to .npy Ground Truth Patches
 
@@ -182,6 +185,9 @@ python scripts/convert_geotiff_to_npy.py \
   --input-dir data/raw/sentinel2_beijing \
   --output-dir data/processed/synthetic_cloud_benchmark/ground_truth
 ```
+新增了一个scripts：convert_geotiff_to_npy.py
+8:17pm
+
 
 Important: this conversion script still needs to be added before running the full real-data pipeline.
 
