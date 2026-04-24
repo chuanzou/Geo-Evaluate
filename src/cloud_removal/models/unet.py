@@ -21,7 +21,25 @@ class DoubleConv(nn.Module):
 
 
 class UNetGenerator(nn.Module):
-    def __init__(self, in_channels: int = 5, out_channels: int = 4, base_channels: int = 32):
+    def __init__(
+        self,
+        in_channels: int = 5,
+        out_channels: int = 4,
+        base_channels: int = 32,
+        final_activation: str | None = "sigmoid",
+    ):
+        """
+        final_activation:
+            "sigmoid" (default): squash output into [0, 1]. Correct for the
+                GAN generator, whose output is an image in reflectance space.
+            None / "none": linear (identity) output. REQUIRED for the
+                diffusion denoiser, whose output is a predicted noise tensor
+                sampled from N(0, 1) — which contains negative values that
+                sigmoid would clip to 0, making the task mathematically
+                unsolvable (we hit exactly this bug and it was the reason
+                diffusion L1_cloud was stuck at ~0.27 regardless of schedule
+                or loss-masking fixes).
+        """
         super().__init__()
         self.down1 = DoubleConv(in_channels, base_channels)
         self.pool1 = nn.MaxPool2d(2)
@@ -32,7 +50,16 @@ class UNetGenerator(nn.Module):
         self.dec2 = DoubleConv(base_channels * 4, base_channels * 2)
         self.up1 = nn.ConvTranspose2d(base_channels * 2, base_channels, 2, stride=2)
         self.dec1 = DoubleConv(base_channels * 2, base_channels)
-        self.out = nn.Sequential(nn.Conv2d(base_channels, out_channels, 1), nn.Sigmoid())
+        final_conv = nn.Conv2d(base_channels, out_channels, 1)
+        if final_activation == "sigmoid":
+            self.out = nn.Sequential(final_conv, nn.Sigmoid())
+        elif final_activation in (None, "none", "linear"):
+            self.out = final_conv
+        else:
+            raise ValueError(
+                f"Unsupported final_activation={final_activation!r}; "
+                f"expected 'sigmoid', 'linear', 'none', or None."
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         d1 = self.down1(x)
